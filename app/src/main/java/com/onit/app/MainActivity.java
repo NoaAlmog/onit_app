@@ -40,7 +40,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String KEY_LAST_CALL_TIME = "last_call_time";
 
 
-    @Override
+    /**@Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
@@ -75,6 +75,59 @@ public class MainActivity extends AppCompatActivity {
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
             return insets;
         });
+    }**/
+
+    //גרסה חדשה של onCreate() בלי סינון לפי זמנים ובלי תלות ב־last_call_time, כדי שתוכלי לבדוק הכל על ההקלטה היחידה שיש לי כרגע
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        EdgeToEdge.enable(this);
+        setContentView(R.layout.activity_main);
+
+        // בקשת הרשאה לגישה לקבצים (נדרשת לצורך קריאת הקלטות)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                Intent intent = new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
+                startActivity(intent);
+            }
+        }
+
+        // בדיקת הרשאות בסיסיות
+        if (checkSelfPermission(android.Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED ||
+                checkSelfPermission(android.Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) {
+
+            requestPermissions(new String[]{
+                    android.Manifest.permission.READ_CONTACTS,
+                    android.Manifest.permission.READ_CALL_LOG
+            }, 1);
+
+        } else {
+            // מפעיל הכל אם יש הרשאות
+            loadContacts();   // מציג אנשי קשר בלוג
+            testSingleRecording();  // שולח הקלטה לבדיקה
+        }
+
+        // טיפול בעיצוב
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
+            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
+            return insets;
+        });
+    }
+
+    private void testSingleRecording() {
+        File dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+        File[] files = dir.listFiles((d, name) -> name.toLowerCase().endsWith(".mp4") || name.toLowerCase().endsWith(".m4a"));
+
+        if (files != null && files.length > 0) {
+            File audioFile = files[0];  // נשלח את הראשון שמצאנו
+            Log.d("OnIT_DEBUG", "📤 נשלח קובץ לבדיקה: " + audioFile.getName());
+
+            // שליחה עם נתונים מזויפים לבדיקה
+            sendAudioFileToServer(audioFile, "0501234567", "סבתא מרים", "120", "18:30 01/06/2025");
+        } else {
+            Log.d("OnIT_DEBUG", "📛 לא נמצאו קבצי אודיו בתיקיית ההורדות.");
+        }
     }
 
 
@@ -154,7 +207,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }).start();
     }
-
 
 
     private long getLastCallTime() {
@@ -254,6 +306,7 @@ public class MainActivity extends AppCompatActivity {
         }).start();
     }
 
+    /**
     private void loadCallLog() {
         Cursor cursor = getContentResolver().query(
                 CallLog.Calls.CONTENT_URI,
@@ -288,6 +341,16 @@ public class MainActivity extends AppCompatActivity {
 
                     // קריאה לשרת
                     sendToTranscribeServer(number, name, duration, readableDate);
+
+                    Log.d("OnIT_DEBUG", "🔍 מתחילה לחפש קובץ אודיו לשיחה בזמן: " + readableDate);
+                    // מציאת הקובץ הכי קרוב בזמן
+                    File audioFile = findClosestRecordingFile(callTime);
+                    if (audioFile != null) {
+                        sendAudioFileToServer(audioFile, number, name, duration, readableDate);
+                    } else {
+                        Log.d("OnIT_AUDIO", "📛 לא נמצאה הקלטה תואמת לשיחה ב-" + readableDate);
+                    }
+
                 } else {
                     Log.d("OnIT_CALL", "❌ שיחה ממספר לא מאושר: " + number);
                 }
@@ -301,8 +364,60 @@ public class MainActivity extends AppCompatActivity {
             cursor.close();
         }
     }
+    **/
 
-    private void sendAudioFileToServer(File audioFile) {
+    //גרסה מעודכנת של הפונקציה בלי סינון לפי זמן
+    private void loadCallLog() {
+        Cursor cursor = getContentResolver().query(
+                CallLog.Calls.CONTENT_URI,
+                null, null, null,
+                CallLog.Calls.DATE + " DESC");
+
+        if (cursor != null) {
+            int numberIndex = cursor.getColumnIndex(CallLog.Calls.NUMBER);
+            int nameIndex = cursor.getColumnIndex(CallLog.Calls.CACHED_NAME);
+            int typeIndex = cursor.getColumnIndex(CallLog.Calls.TYPE);
+            int dateIndex = cursor.getColumnIndex(CallLog.Calls.DATE);
+            int durationIndex = cursor.getColumnIndex(CallLog.Calls.DURATION);
+
+            while (cursor.moveToNext()) {
+                long callTime = cursor.getLong(dateIndex);
+
+                String number = cursor.getString(numberIndex);
+                String name = cursor.getString(nameIndex);
+                String type = cursor.getString(typeIndex);
+                String duration = cursor.getString(durationIndex);
+
+                SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss dd/MM/yyyy", Locale.getDefault());
+                String readableDate = sdf.format(new Date(callTime));
+
+                if (isNumberInContacts(number)) {
+                    Log.d("OnIT_CALL", "✅ שיחה מאיש קשר: " + name + " | " + number +
+                            " | סוג: " + type + " | תאריך: " + readableDate + " | משך: " + duration + " שניות");
+
+                    // קריאה לשרת
+                    sendToTranscribeServer(number, name, duration, readableDate);
+
+                    Log.d("OnIT_DEBUG", "🔍 מתחילה לחפש קובץ אודיו לשיחה בזמן: " + readableDate);
+                    File audioFile = findClosestRecordingFile(callTime);
+                    if (audioFile != null) {
+                        sendAudioFileToServer(audioFile, number, name, duration, readableDate);
+                    } else {
+                        Log.d("OnIT_AUDIO", "📛 לא נמצאה הקלטה תואמת לשיחה ב-" + readableDate);
+                    }
+
+                } else {
+                    Log.d("OnIT_CALL", "❌ שיחה ממספר לא מאושר: " + number);
+                }
+            }
+
+            cursor.close();
+        }
+    }
+
+
+    private void sendAudioFileToServer(File audioFile, String number, String name, String duration, String readableDate) {
+        Log.d("OnIT_DEBUG", "📤 שולחת קובץ אודיו לשרת: " + audioFile.getName());
         new Thread(() -> {
             try {
                 OkHttpClient client = new OkHttpClient.Builder().build();
@@ -311,6 +426,10 @@ public class MainActivity extends AppCompatActivity {
                         .setType(MultipartBody.FORM)
                         .addFormDataPart("audio", audioFile.getName(),
                                 RequestBody.create(audioFile, MediaType.parse("audio/*")))
+                        .addFormDataPart("number", number != null ? number : "")
+                        .addFormDataPart("name", name != null ? name : "")
+                        .addFormDataPart("duration", duration != null ? duration : "")
+                        .addFormDataPart("readableDate", readableDate != null ? readableDate : "")
                         .build();
 
                 Request request = new Request.Builder()
@@ -333,8 +452,11 @@ public class MainActivity extends AppCompatActivity {
         }).start();
     }
 
+
     private File findClosestRecordingFile(long callTime) {
-        File dir = new File(Environment.getExternalStorageDirectory(), "CallRecordings");
+//        File dir = new File(Environment.getExternalStorageDirectory(), "CallRecordings");
+        File dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+        Log.d("OnIT_DEBUG", "📁 מחפשת הקלטות בתיקייה: " + dir.getAbsolutePath());
         if (!dir.exists() || !dir.isDirectory()) {
             Log.d("OnIT_AUDIO", "📛 תיקיית הקלטות לא קיימת");
             return null;
