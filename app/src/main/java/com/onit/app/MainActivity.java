@@ -189,7 +189,7 @@ public class MainActivity extends AppCompatActivity {
                 RequestBody body = RequestBody.create(json.toString(), okhttp3.MediaType.parse("application/json"));
 
                 Request request = new Request.Builder()
-                        .url("https://onit-server.onrender.com/transcribe")
+                        .url("https://onit-fastapi.onrender.com/transcribe")
                         .post(body)
                         .build();
 
@@ -287,7 +287,7 @@ public class MainActivity extends AppCompatActivity {
                         okhttp3.MediaType.parse("application/json"));
 
                 Request request = new Request.Builder()
-                        .url("https://onit-server.onrender.com/transcribe")
+                        .url("https://onit-fastapi.onrender.com/transcribe")
                         .post(body)
                         .build();
 
@@ -433,7 +433,7 @@ public class MainActivity extends AppCompatActivity {
                         .build();
 
                 Request request = new Request.Builder()
-                        .url("https://onit-server.onrender.com/transcribe")
+                        .url("https://onit-fastapi.onrender.com/transcribe")
                         .post(requestBody)
                         .build();
 
